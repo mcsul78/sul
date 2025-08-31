@@ -1,1 +1,399 @@
-# sul
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>종합 점검 관리 시스템 (오류 수정 최종본)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        :root { --bg-color: #F9F9F9; --editor-bg: #FFFFFF; --preview-bg: #FFFFFF; --text-main: #34495E; --text-headline: #16A05A; --accent-color: #2980B9; --border-color: #ECF0F1; --font-family: 'Pretendard', sans-serif; }
+        html, body { height: 100%; }
+        body { font-family: var(--font-family); background-color: var(--bg-color); margin: 0; padding: 10px; color: var(--text-main); font-size: 16px; box-sizing: border-box; }
+        .hidden { display: none !important; }
+
+        /* --- 오버레이 및 모달 --- */
+        .overlay-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-box { background-color: white; padding: 30px; border-radius: 12px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); text-align: center; width: 90%; max-width: 450px; }
+        .modal-box h3 { margin-top: 0; color: var(--text-headline); font-size: 1.5em; }
+        .modal-box p { font-size: 1em; margin-bottom: 25px; }
+        .modal-box input, .modal-box textarea { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; font-size: 1em; margin-bottom: 15px; box-sizing: border-box; font-family: var(--font-family); }
+        .modal-box button { width: 100%; padding: 14px; border: none; background-color: var(--text-headline); color: white; font-size: 1.1em; font-weight: 600; border-radius: 8px; cursor: pointer; transition: background-color: 0.3s; margin-top: 5px; }
+        .modal-box button.secondary { background-color: #7f8c8d; }
+        #welcome-container .mode-button { padding: 18px; font-size: 1.1em; }
+        #welcome-container .mode-button.admin { background-color: #c0392b; }
+        
+        /* 관리자 패널 탭 */
+        .admin-tabs { display: flex; border-bottom: 2px solid var(--border-color); margin-bottom: 20px; }
+        .admin-tab { padding: 10px 15px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; }
+        .admin-tab.active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
+        .admin-tab-content { text-align: left; }
+        .admin-tab-content label { font-weight: 600; font-size: 0.95em; display: block; margin-bottom: 8px; }
+
+        /* --- 메인 앱 --- */
+        #app-container { height: 100%; }
+        .container { display: flex; width: 100%; max-width: 1800px; gap: 20px; flex-direction: column; margin: 0 auto; }
+        .pane-content { padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 15px rgba(0,0,0,0.05); background-color: white; }
+        h2 { font-size: 1.6em; }
+        h3 { font-size: 1.2em; margin-top: 25px; margin-bottom: 15px; }
+        label { font-size: 0.95em; }
+        input[type="text"], input[type="month"], input[type="date"], input[type="time"] { padding: 10px; font-size: 1em; }
+        .form-controls { display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; }
+        #export-excel-button { padding: 12px 20px; font-size: 1em; font-weight: 600; white-space: nowrap; border-radius: 8px; border: none; background-color: #16a085; color: white; cursor: pointer; }
+        
+        /* 왼쪽 에디터 아이템 */
+        .schedule-item { padding: 15px; background-color: #FDFDFD; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 15px;}
+        .schedule-item-header { font-size: 1.1em; font-weight: 700; margin-bottom: 15px; color: var(--accent-color); }
+        .schedule-inputs .input-group { flex-direction: column; align-items: stretch; gap: 8px; display: flex; margin-bottom: 15px; }
+        .schedule-inputs .checkbox-group { flex-direction: row; align-items: center; gap: 5px; font-size: 0.9em; }
+        .schedule-inputs input[type="checkbox"] { width: auto; }
+
+        /* 오른쪽 달력 & 요약 */
+        #calendar-month-year { font-size: 1.5em; font-weight: 700; color: var(--text-headline); }
+        #monthly-summary { border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #f8f9fa; }
+        #monthly-summary h4 { font-size: 1.1em; margin-top: 0; margin-bottom: 10px; color: var(--text-headline); }
+        .summary-region span { display: block; line-height: 1.5; font-size: 0.9em; }
+        .calendar th { padding: 8px 5px; font-size: 0.9em; }
+        .calendar td { height: 80px; padding: 5px; vertical-align: top; border: 1px solid var(--border-color); }
+        .calendar .day-number { font-size: 0.85em; font-weight: 600; }
+        .calendar .event { font-size: 0.8em; padding: 2px 4px; border-radius: 4px; margin-bottom: 3px; color: white; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .event.hq { background-color: var(--accent-color); }
+        .event.fsc { background-color: var(--text-headline); }
+        
+        /* 게시판 */
+        .board-form { flex-direction: column; gap: 10px; display: flex; margin-bottom: 20px; }
+        .board-form input[name="author"] { flex: auto; }
+
+        /* --- 데스크탑 화면용 미디어 쿼리 --- */
+        @media (min-width: 1024px) {
+            body { padding: 20px; }
+            .container { flex-direction: row; }
+            .editor-pane { flex: 2; min-width: 400px; }
+            .preview-pane { flex: 3; min-width: 600px; }
+            .form-controls { flex-direction: row; align-items: flex-end; }
+            .schedule-inputs .input-group { flex-direction: row; align-items: center; }
+            .board-form { flex-direction: row; }
+            .pane-content { padding: 30px; }
+            .modal-box { padding: 40px; }
+            .calendar td { height: 120px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="welcome-container" class="overlay-container"> <div class="modal-box"> <h3>팀 일정 공유</h3> <p>접속 모드를 선택해주세요.</p> <div style="display: flex; flex-direction: column; gap: 15px;"> <button id="admin-mode-button" class="mode-button admin">🔑 관리자 모드</button> <button id="user-mode-button" class="mode-button">👤 점검자 모드</button> </div> </div> </div>
+    <div id="admin-login-container" class="overlay-container hidden"> <div class="modal-box"> <h3>관리자 로그인</h3> <input type="text" id="admin-id-input" placeholder="관리자 아이디"> <input type="password" id="admin-password-input" placeholder="관리자 비밀번호"> <button id="admin-login-button">로그인</button> <button class="back-button secondary">뒤로가기</button> </div> </div>
+    <div id="user-login-container" class="overlay-container hidden"> <div class="modal-box"> <h3>점검자 로그인</h3> <input type="password" id="user-password-input" placeholder="비밀번호"> <button id="user-login-button">입장하기</button> <button class="back-button secondary">뒤로가기</button> </div> </div>
+    <div id="admin-panel-container" class="overlay-container hidden">
+        <div class="modal-box">
+            <h3>관리자 설정</h3>
+            <div class="admin-tabs">
+                <div class="admin-tab active" data-tab="password">비밀번호 설정</div>
+                <div class="admin-tab" data-tab="schedule">월별 매장 관리</div>
+            </div>
+            <div id="tab-password" class="admin-tab-content">
+                <label for="new-user-password-input">점검자 비밀번호 설정</label>
+                <input type="text" id="new-user-password-input" placeholder="새로운 비밀번호">
+                <button id="save-user-password-button">저장</button>
+            </div>
+            <div id="tab-schedule" class="admin-tab-content hidden">
+                <label for="manage-month-input">점검 월 선택</label>
+                <input type="month" id="manage-month-input">
+                <label for="manage-region-s">수도권 매장 (쉼표 , 로 구분)</label>
+                <textarea id="manage-region-s" rows="3"></textarea>
+                <label for="manage-region-n">남부권 매장 (쉼표 , 로 구분)</label>
+                <textarea id="manage-region-n" rows="3"></textarea>
+                <label for="manage-region-c">충청권 매장 (쉼표 , 로 구분)</label>
+                <textarea id="manage-region-c" rows="3"></textarea>
+                <button id="save-monthly-schedule-button">월별 매장 저장</button>
+            </div>
+            <button id="proceed-to-app-button" class="secondary">일정 관리로 이동</button>
+        </div>
+    </div>
+
+    <div id="app-container" class="hidden">
+        <div class="container">
+           <div class="editor-pane">
+                <div class="pane-content">
+                    <h2>월별 매장 점검 일정</h2>
+                    <div class="form-controls">
+                        <div>
+                            <label for="input-schedule-month">적용 월 선택</label>
+                            <input type="month" id="input-schedule-month">
+                        </div>
+                        <button id="export-excel-button">엑셀로 내보내기</button>
+                    </div>
+                    <div id="schedule-editor" style="max-height: 70vh; overflow-y: auto;"></div>
+                </div>
+            </div>
+            <div class="preview-pane">
+                <div class="pane-content">
+                    <div id="calendar-header">
+                        <div id="calendar-month-year"></div>
+                    </div>
+                    <div id="monthly-summary"></div>
+                    <div id="calendar-container"></div>
+                </div>
+            </div>
+        </div>
+        <div class="container board-section">
+            <div class="pane-content" style="flex:1;">
+                <h2>📢 공유 게시판</h2>
+                <div class="board-form">
+                    <input type="text" name="author" placeholder="이름">
+                    <input type="text" name="content" placeholder="내용을 입력하세요...">
+                    <button id="add-post-button">글쓰기</button>
+                </div>
+                <div id="board-posts" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- 설정 및 데이터 키 ---
+        const ADMIN_ID = 'mcsul', ADMIN_PASSWORD = '7780';
+        const USER_PASSWORD_KEY = 'teamScheduleUserPassword';
+        const MONTHLY_SCHEDULE_KEY = 'teamMonthlySchedules';
+        const BOARD_POSTS_KEY = 'teamBoardPosts';
+
+        // --- 데이터 로드 함수 (오류 방지) ---
+        const loadJSON = (key, defaultValue) => {
+            try {
+                const item = localStorage.getItem(key);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error(`Error parsing JSON from localStorage key "${key}":`, e);
+                return defaultValue;
+            }
+        };
+
+        let monthlySchedules = loadJSON(MONTHLY_SCHEDULE_KEY, { '2025-09': { '수도권': [ '서울롯데명동점', '서울대병원점', '용산KTX점 (집중관리)', '수원 스타필드점', '청량리역점 (분기1회)' ], '남부권': [ '롯데동래점', '부산영도점', '부산역광장점', '부산역라마다앙코르점' ], '충청권': [ '대전역점 (분기 1회)' ] }});
+        let boardPosts = loadJSON(BOARD_POSTS_KEY, []);
+
+        // --- DOM 요소 ---
+        const welcomeContainer = document.getElementById('welcome-container'), 
+              adminLoginContainer = document.getElementById('admin-login-container'), 
+              userLoginContainer = document.getElementById('user-login-container'), 
+              adminPanelContainer = document.getElementById('admin-panel-container'), 
+              appContainer = document.getElementById('app-container');
+
+        let isAppInitialized = false;
+        let currentScheduleData = {};
+
+        const showScreen = (screen) => {
+            [welcomeContainer, adminLoginContainer, userLoginContainer, adminPanelContainer, appContainer].forEach(s => s.classList.add('hidden'));
+            if (screen) screen.classList.remove('hidden');
+        };
+
+        // --- 로그인 및 모드 선택 로직 ---
+        document.getElementById('admin-mode-button').addEventListener('click', () => showScreen(adminLoginContainer));
+        document.getElementById('user-mode-button').addEventListener('click', () => showScreen(userLoginContainer));
+        document.querySelectorAll('.back-button').forEach(btn => btn.addEventListener('click', () => showScreen(welcomeContainer)));
+        document.getElementById('admin-login-button').addEventListener('click', () => {
+            const id = document.getElementById('admin-id-input').value;
+            const pw = document.getElementById('admin-password-input').value;
+            if (id === ADMIN_ID && pw === ADMIN_PASSWORD) {
+                showScreen(adminPanelContainer);
+                document.getElementById('new-user-password-input').value = localStorage.getItem(USER_PASSWORD_KEY) || '';
+            } else { alert('관리자 정보가 올바르지 않습니다.'); }
+        });
+        document.getElementById('user-login-button').addEventListener('click', () => {
+            const userPassword = localStorage.getItem(USER_PASSWORD_KEY);
+            const enteredPassword = document.getElementById('user-password-input').value;
+            if (userPassword && enteredPassword === userPassword) {
+                showScreen(appContainer);
+                if (!isAppInitialized) initializeApp();
+            } else { alert('비밀번호가 틀렸거나 설정되지 않았습니다.'); }
+        });
+        
+        // --- 관리자 패널 ---
+        document.querySelectorAll('.admin-tab').forEach(tab => tab.addEventListener('click', e => {
+            document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.add('hidden'));
+            e.target.classList.add('active');
+            document.getElementById(`tab-${e.target.dataset.tab}`).classList.remove('hidden');
+        }));
+        document.getElementById('save-user-password-button').addEventListener('click', () => {
+            localStorage.setItem(USER_PASSWORD_KEY, document.getElementById('new-user-password-input').value);
+            alert('점검자 비밀번호가 저장되었습니다.');
+        });
+        const manageMonthInput = document.getElementById('manage-month-input');
+        manageMonthInput.addEventListener('change', () => {
+            const monthData = monthlySchedules[manageMonthInput.value] || {};
+            document.getElementById('manage-region-s').value = (monthData['수도권'] || []).join(', ');
+            document.getElementById('manage-region-n').value = (monthData['남부권'] || []).join(', ');
+            document.getElementById('manage-region-c').value = (monthData['충청권'] || []).join(', ');
+        });
+        document.getElementById('save-monthly-schedule-button').addEventListener('click', () => {
+            const month = manageMonthInput.value;
+            if (!month) { alert('점검 월을 선택해주세요.'); return; }
+            monthlySchedules[month] = {
+                '수도권': document.getElementById('manage-region-s').value.split(',').map(s => s.trim()).filter(Boolean),
+                '남부권': document.getElementById('manage-region-n').value.split(',').map(s => s.trim()).filter(Boolean),
+                '충청권': document.getElementById('manage-region-c').value.split(',').map(s => s.trim()).filter(Boolean)
+            };
+            localStorage.setItem(MONTHLY_SCHEDULE_KEY, JSON.stringify(monthlySchedules));
+            alert(`${month}월 매장 정보가 저장되었습니다.`);
+        });
+        document.getElementById('proceed-to-app-button').addEventListener('click', () => {
+            showScreen(appContainer);
+            if (!isAppInitialized) initializeApp();
+        });
+
+        // --- 메인 앱 기능 함수 ---
+        function updateAppView(monthKey) {
+            if (!monthKey) return;
+            const [year, month] = monthKey.split('-');
+            const scheduleForMonth = monthlySchedules[monthKey] || {};
+            renderEditor(scheduleForMonth);
+            renderMonthlySummary(scheduleForMonth);
+            renderCalendar(parseInt(year), parseInt(month));
+        }
+
+        function renderEditor(schedule) {
+            const editorContainer = document.getElementById('schedule-editor');
+            currentScheduleData = JSON.parse(JSON.stringify(schedule));
+            editorContainer.innerHTML = '';
+            Object.keys(schedule).forEach(region => {
+                const editorRegionTitle = document.createElement('h3');
+                editorRegionTitle.textContent = `[ ${region} ]`;
+                editorContainer.appendChild(editorRegionTitle);
+                if(!currentScheduleData[region]) currentScheduleData[region] = [];
+                schedule[region].forEach((storeName, index) => {
+                    currentScheduleData[region][index] = { name: storeName, hqDate: '', hqIrrelevant: false, fscDate: '', checkTime: '' };
+                    const editorItem = document.createElement('div');
+                    editorItem.className = 'schedule-item';
+                    editorItem.innerHTML = `<div class="schedule-item-header">${storeName}</div><div class="schedule-inputs"><div class="input-group"><label>삼진본사 요청일자</label><input type="date" data-region="${region}" data-index="${index}" data-type="hqDate"><div class="checkbox-group"><input type="checkbox" id="hq-irrelevant-${region}-${index}" data-region="${region}" data-index="${index}" data-type="hqIrrelevant"><label for="hq-irrelevant-${region}-${index}">비해당</label></div></div><div class="input-group"><label>FSC 점검날짜</label><input type="date" data-region="${region}" data-index="${index}" data-type="fscDate"></div><div class="input-group"><label>시간</label><input type="time" data-region="${region}" data-index="${index}" data-type="checkTime"></div></div>`;
+                    editorContainer.appendChild(editorItem);
+                });
+            });
+        }
+
+        function handleEditorInput(e) {
+            const { region, index, type } = e.target.dataset;
+            if (!region || !currentScheduleData[region] || !currentScheduleData[region][index]) return;
+            const value = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+            currentScheduleData[region][index][type] = value;
+            if (type === 'hqIrrelevant') {
+                const dateInput = e.target.closest('.input-group').querySelector('input[type="date"]');
+                if (dateInput) dateInput.disabled = value;
+            }
+            populateCalendar();
+        }
+
+        function renderMonthlySummary(schedule) {
+            const monthlySummaryContainer = document.getElementById('monthly-summary');
+            let summaryHTML = '<h4>월별 점검 매장</h4>';
+            if (!schedule || Object.keys(schedule).length === 0 || Object.values(schedule).every(arr => arr.length === 0)) {
+                summaryHTML += '<p style="font-size:0.9em; color:#888;">해당 월에 등록된 매장이 없습니다.</p>';
+            } else {
+                Object.keys(schedule).forEach(region => {
+                    if(schedule[region] && schedule[region].length > 0)
+                        summaryHTML += `<div class="summary-region"><strong>${region}: </strong><span>${schedule[region].join(', ')}</span></div>`;
+                });
+            }
+            monthlySummaryContainer.innerHTML = summaryHTML;
+        }
+
+        function renderCalendar(year, month) {
+            const calendarMonthYear = document.getElementById('calendar-month-year');
+            const calendarContainer = document.getElementById('calendar-container');
+            calendarMonthYear.textContent = `${year}년 ${month}월`;
+            const firstDay = new Date(year, month - 1, 1).getDay();
+            const daysInMonth = new Date(year, month, 0).getDate();
+            let calendarHTML = `<table class="calendar"><thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead><tbody>`;
+            let date = 1;
+            for (let i = 0; i < 6; i++) {
+                calendarHTML += '<tr>';
+                for (let j = 0; j < 7; j++) {
+                    if (i === 0 && j < firstDay || date > daysInMonth) {
+                        calendarHTML += '<td class="other-month"></td>';
+                    } else {
+                        const fullDate = `${year}-${String(month).padStart(2, '0')}-${String(date).padStart(2, '0')}`;
+                        calendarHTML += `<td data-date="${fullDate}"><div class="day-number">${date}</div><div class="events"></div></td>`;
+                        date++;
+                    }
+                }
+                calendarHTML += '</tr>';
+                if (date > daysInMonth) break;
+            }
+            calendarHTML += '</tbody></table>';
+            calendarContainer.innerHTML = calendarHTML;
+            populateCalendar();
+        }
+
+        function populateCalendar() {
+            document.querySelectorAll('.calendar .events').forEach(e => e.innerHTML = '');
+            Object.keys(currentScheduleData).forEach(region => {
+                (currentScheduleData[region] || []).forEach(item => {
+                    if (item.hqDate && !item.hqIrrelevant) {
+                        const cell = document.querySelector(`.calendar td[data-date="${item.hqDate}"] .events`);
+                        if (cell) cell.innerHTML += `<div class="event hq" title="본사요청: ${item.name}">${item.name}</div>`;
+                    }
+                    if (item.fscDate) {
+                        const cell = document.querySelector(`.calendar td[data-date="${item.fscDate}"] .events`);
+                        if (cell) cell.innerHTML += `<div class="event fsc" title="FSC점검: ${item.name}">${item.name}</div>`;
+                    }
+                });
+            });
+        }
+
+        function exportToExcel() {
+            const excelData = [];
+            Object.keys(currentScheduleData).forEach(region => {
+                currentScheduleData[region].forEach(item => {
+                    if (item.hqDate || item.fscDate || item.hqIrrelevant) {
+                        excelData.push({ '권역': region, '매장명': item.name, '삼진본사 요청일자': item.hqIrrelevant ? '비해당' : item.hqDate, 'FSC 점검날짜': item.fscDate, '시간': item.checkTime });
+                    }
+                });
+            });
+            if (excelData.length === 0) { alert('내보낼 일정이 없습니다. 날짜를 입력하거나 \'비해당\'을 체크해주세요.'); return; }
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, '점검 일정');
+            XLSX.writeFile(workbook, `${document.getElementById('input-schedule-month').value}_점검일정.xlsx`);
+        }
+        
+        function renderBoard() {
+            const boardPostsContainer = document.getElementById('board-posts');
+            boardPostsContainer.innerHTML = '';
+            boardPosts.slice(0, 50).forEach(post => {
+                const postEl = document.createElement('div'); postEl.className = 'post-item';
+                postEl.innerHTML = `<div class="post-header"><div class="post-author">${post.author}</div><div class="post-timestamp">${new Date(post.timestamp).toLocaleString()}</div></div><div class="post-content">${post.content}</div>`;
+                boardPostsContainer.prepend(postEl);
+            });
+        }
+
+        function addBoardPost() {
+            const authorInput = document.querySelector('.board-form input[name="author"]');
+            const contentInput = document.querySelector('.board-form input[name="content"]');
+            if (!authorInput.value || !contentInput.value) { alert('이름과 내용을 모두 입력해주세요.'); return; }
+            boardPosts.unshift({ author: authorInput.value, content: contentInput.value, timestamp: new Date().toISOString() });
+            if(boardPosts.length > 50) boardPosts.pop();
+            localStorage.setItem(BOARD_POSTS_KEY, JSON.stringify(boardPosts));
+            renderBoard();
+            contentInput.value = '';
+        }
+        
+        // --- 메인 앱 초기화 함수 ---
+        function initializeApp() {
+            if (isAppInitialized) return;
+            const monthInput = document.getElementById('input-schedule-month');
+            document.getElementById('schedule-editor').addEventListener('input', handleEditorInput);
+            document.getElementById('add-post-button').addEventListener('click', addBoardPost);
+            document.getElementById('export-excel-button').addEventListener('click', exportToExcel);
+            monthInput.addEventListener('change', () => updateAppView(monthInput.value));
+            
+            const today = new Date();
+            const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+            monthInput.value = currentMonth;
+            
+            updateAppView(currentMonth);
+            renderBoard();
+            isAppInitialized = true;
+        }
+    });
+    </script>
+</body>
+</html>
